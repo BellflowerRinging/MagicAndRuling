@@ -1,0 +1,337 @@
+﻿using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEditor;
+using System;
+
+public class GameDataEditWindow : EditorWindow
+{
+
+    [MenuItem("MagicAndRuling/GameDataEdit")]
+    private static void ShowWindow()
+    {
+        GetWindow<GameDataEditWindow>("GameDataEdit").Show();
+        Input.imeCompositionMode = IMECompositionMode.On;
+
+    }
+
+    Vector2 ScrollViewV2 = new Vector2(0, 0);
+    int SelectIetmIndex = 0;
+    static string[] DataNames;
+    public string[] InputKeys = new string[30];
+    public string[] InputStrings = new string[30];
+
+
+    public int SelectGameDataTypeIndex = 0;
+    public int ShowGameDataTypeIndex = 0;
+    public int LastShowGameDataTypeIndex = -1;
+
+
+    int LastSelectIetmIndex = -1;
+    GUIStyle TextCenterStyle = new GUIStyle();
+
+    void OnEnable()
+    {
+        TextCenterStyle.alignment = TextAnchor.MiddleCenter;
+        GameDataManager.Init();
+    }
+    private void OnGUI()
+    {
+
+        GUILayout.Label("All Game Data List", EditorStyles.boldLabel);
+
+        if (GUILayout.Button("重新载入"))
+        {
+            GameDataManager.ReLoad();
+        }
+
+        GUILayout.BeginHorizontal();
+
+        ShowTypeAndAddNewData();
+
+        GUILayout.EndHorizontal();
+
+        GUILayout.Space(6);
+
+        List<GameData> olist = GameDataManager.GetGameDatas();
+        List<GameData> list = new List<GameData>();
+
+        if (ShowGameDataTypeIndex >= Enum.GetNames(typeof(GameDataType)).Length)
+        {
+            list = olist;
+        }
+        else
+        {
+            foreach (var item in olist)
+            {
+                if (item == null) continue;
+                if ((int)item.DataType == ShowGameDataTypeIndex)
+                {
+                    list.Add(item);
+                }
+            }
+        }
+
+        if (list != null)
+        {
+            DataNames = new string[list.Count];
+
+            for (int i = 0; i < list.Count; i++)
+            {
+                DataNames[i] = list[i].GetString(0);
+            }
+        }
+
+        if (DataNames != null && DataNames.Length != 0 && list.Count > 0)
+        {
+            GUILayout.BeginHorizontal();
+            SelectScrollView();
+            GUILayout.BeginHorizontal();
+
+            GameData data = list[SelectIetmIndex = Mathf.Clamp(SelectIetmIndex, 0, list.Count - 1)];
+            string[] fields = GameDataManager.GetFieldNames(data.DataType);
+            bool CanEditField = GameDataManager.CanEditGameDataField(data.DataType);
+            int count;
+
+            if (fields != null && CanEditField)
+            {
+                throw new Exception("!CanEditField && fields == null");
+            }
+
+            string[] CanEditFieldNames = new string[data.Content.Keys.Count];
+            if (fields == null && !CanEditField)
+            {
+                int i = 0;
+                foreach (var item in data.Content.Keys)
+                {
+                    CanEditFieldNames[i] = item;
+                    i++;
+                }
+            }
+
+            GUILayout.BeginVertical(GUILayout.Width(80)); //Leable
+
+            if (fields != null && !CanEditField)
+            {
+                count = fields.Length;
+                LabelColoum(fields);
+            }
+            else
+            {
+                if (CanEditField)
+                {
+                    count = data.Content.Count;
+                    LabelColoum(data.Content.Keys);
+                }
+                else
+                {
+                    count = CanEditFieldNames.Length;
+                    LabelColoum(CanEditFieldNames);
+                }
+
+            }
+
+            GUILayout.EndVertical(); //Leable
+
+            GUILayout.BeginVertical(); //Input Text Field
+
+            InitInput(data);
+
+            for (int i = 0; i < count; i++)
+            {
+                InputStrings[i] = GUILayout.TextField(InputStrings[i]);
+            }
+
+            if (CanEditField)
+            {
+                if (GUILayout.Button("添加字段"))
+                {
+                    data.SaveValue("NewKey", "NewValue");
+                    ResetInputField();
+                }
+            }
+            else
+            {
+                if (GUILayout.Button("重置", GUILayout.Height(19)))
+                {
+                    ResetInputField();
+                }
+            }
+
+            GUILayout.EndVertical(); //Input Text Field
+
+            if (CanEditField)
+            {
+                GUILayout.BeginVertical(GUILayout.Width(50)); // Del Button
+
+                if (GUILayout.Button("重置", GUILayout.Height(15)))
+                {
+                    LastSelectIetmIndex = -1;
+                }
+
+                for (int i = 1; i < count; i++)
+                {
+                    if (GUILayout.Button("-", GUILayout.Height(15.5f)))
+                    {
+                        data.DelValue(i);
+                        InputKeys[i] = "";
+                        InputStrings[i] = "";
+
+                    }
+                }
+
+                GUILayout.EndVertical(); // Del Button
+            }
+
+
+            GUILayout.EndHorizontal();
+            GUILayout.EndHorizontal();
+
+            if (GUILayout.Button("保存数据"))
+            {
+                data.Content.Clear();
+                data.SaveValue("0", InputStrings[0]);
+
+                if (CanEditField)
+                {
+                    for (int i = 1; i < InputKeys.Length; i++)
+                    {
+                        if (!string.IsNullOrEmpty(InputKeys[i]))
+                        {
+                            data.SaveValue(InputKeys[i], InputStrings[i]);
+                        }
+                    }
+                }
+
+                else if (!CanEditField)
+                {
+                    if (fields != null)
+                    {
+                        for (int i = 1; i < fields.Length; i++)
+                        {
+                            if (!string.IsNullOrEmpty(InputStrings[i]))
+                            {
+                                data.SaveValue(i + "", InputStrings[i]);
+                            }
+                        }
+                    }
+                    else if (CanEditFieldNames != null)
+                    {
+                        for (int i = 1; i < CanEditFieldNames.Length; i++)
+                        {
+                            if (!string.IsNullOrEmpty(InputStrings[i]))
+                            {
+                                data.SaveValue(CanEditFieldNames[i], InputStrings[i]);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        throw new Exception("fields == null && CanEditFieldNames != null");
+                    }
+                }
+
+                GameDataManager.Save(false);
+            }
+        }
+
+    }
+
+    private void ShowTypeAndAddNewData()
+    {
+        GUILayout.Label("显示类型：", GUILayout.Width(55));
+        string[] GameDataTypeNames = Enum.GetNames(typeof(GameDataType));
+        string[] ShowTypeNames = new string[GameDataTypeNames.Length + 1];
+        Array.Copy(GameDataTypeNames, ShowTypeNames, GameDataTypeNames.Length);
+        ShowTypeNames[ShowTypeNames.Length - 1] = "显示所有";
+
+        ShowGameDataTypeIndex = EditorGUILayout.Popup(ShowGameDataTypeIndex, ShowTypeNames);        //---
+
+        if (LastShowGameDataTypeIndex != ShowGameDataTypeIndex)
+        {
+            ResetInputField();
+            LastShowGameDataTypeIndex = ShowGameDataTypeIndex;
+        }
+
+        GUILayout.Label("添加类型：", GUILayout.Width(55));
+        SelectGameDataTypeIndex = EditorGUILayout.Popup(SelectGameDataTypeIndex, GameDataTypeNames);
+
+        if (GUILayout.Button("添加数据"))
+        {
+            GameData data = GameDataManager.CreateGameData((GameDataType)SelectGameDataTypeIndex, "New" + Enum.GetName(typeof(GameDataType), SelectGameDataTypeIndex));
+            GameDataManager.AddGameData(data);
+            ShowGameDataTypeIndex = SelectGameDataTypeIndex;
+            SelectIetmIndex = int.MaxValue;
+            ResetInputField();
+        }
+    }
+
+    public void SelectScrollView()
+    {
+
+        GUIStyle textStyle = new GUIStyle("textfield");
+        GUIStyle buttonStyle = new GUIStyle("button");
+        textStyle.active = buttonStyle.active;
+        textStyle.onNormal = buttonStyle.onNormal;
+
+        ScrollViewV2 = GUILayout.BeginScrollView(ScrollViewV2, true, true, GUILayout.Width(155), GUILayout.Height(595));
+        {
+            SelectIetmIndex = GUILayout.SelectionGrid(SelectIetmIndex, DataNames, 1, textStyle);
+        }
+
+        GUILayout.EndScrollView();
+    }
+
+    public void LabelColoum(string[] fields)
+    {
+        GUILayout.Label("Name", TextCenterStyle, GUILayout.Height(18));
+
+        for (int i = 1; i < fields.Length; i++)
+        {
+            GUILayout.Label(fields[i], TextCenterStyle, GUILayout.Height(18));
+        }
+    }
+
+    public void LabelColoum(IEnumerable keys)
+    {
+        GUILayout.Label("Name", TextCenterStyle, GUILayout.Height(18)); GUILayout.Space(0);
+        GUIStyle center = new GUIStyle("textfield");
+        center.alignment = TextAnchor.MiddleCenter;
+        int index = -1;
+        foreach (var item in keys)
+        {
+            index++;
+            if (index == 0) continue;
+            InputKeys[index] = GUILayout.TextField(InputKeys[index], center);
+        }
+    }
+
+    public void InitInput(GameData data)
+    {
+        if (LastSelectIetmIndex != SelectIetmIndex)
+        {
+            for (int i = 0; i < InputKeys.Length; i++)
+            {
+                InputKeys[i] = "";
+                InputStrings[i] = "";
+            }
+
+            InputStrings[0] = data.Content["0"];
+            LastSelectIetmIndex = SelectIetmIndex;
+
+            int index = 0;
+            foreach (var item in data.Content.Keys)
+            {
+                InputStrings[index] = data.Content[item];
+                InputKeys[index] = item;
+                index++;
+            }
+        }
+    }
+
+    public void ResetInputField()
+    {
+        LastSelectIetmIndex = -1;
+    }
+
+}
